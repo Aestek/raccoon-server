@@ -2,8 +2,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
-#include "../http_request.h"
-#include "../http_response.h"
+#include "../request.h"
+#include "../response.h"
 
 void log_raw(char msg[])
 {

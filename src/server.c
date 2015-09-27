@@ -6,11 +6,9 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
-#include "http_server.h"
-#include "http_common.h"
-#include "http_request.h"
-#include "req_parser.h"
-#include "res_renderer.h"
+#include "server.h"
+#include "header.h"
+#include "request.h"
 #include "lib/linked_list.h"
 
 void error(const char *msg)
@@ -21,7 +19,7 @@ void error(const char *msg)
 
 void run_server(int portno, http_handler handler, logger logger)
 {
-	const int backlog_size = 5;
+	const int backlog_size = TCP_BACKLOG_SIZE;
 	int server_sockfd, client_sockfd;
 	socklen_t client_addr_length;
 	struct sockaddr_in serv_addr, cli_addr;
@@ -56,12 +54,12 @@ void run_server(int portno, http_handler handler, logger logger)
 		if (client_sockfd < 0)
 			error("ERROR on accept");
 
-		http_request *req = parse_request(client_sockfd);
+		http_request *req = http_request_parse(client_sockfd);
 		http_response *res = http_response_new();
 		strcpy(res->http_version_str, "HTTP/1.0");
 
 		handler(req, res);
-		write_response(req, res);
+		http_response_write(req, res);
 		logger(req, res);
 
 		close(client_sockfd);

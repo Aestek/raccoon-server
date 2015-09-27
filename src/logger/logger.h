@@ -1,7 +1,7 @@
 #pragma once
 
-#include "../http_request.h"
-#include "../http_response.h"
+#include "../request.h"
+#include "../response.h"
 
 typedef void (*logger)(http_request *, http_response*);
 

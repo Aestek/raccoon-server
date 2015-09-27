@@ -1,7 +1,7 @@
-TARGET = server
+qTARGET = server
 LIBS = -lm
 CC = gcc
-CFLAGS = -g -Wall -std=c99
+CFLAGS = -g -Wall -D_BSD_SOURCE -std=c99
 
 .PHONY: default all clean
 
@@ -20,5 +20,5 @@ $(TARGET): $(OBJECTS)
 	$(CC) $(OBJECTS) -Wall $(LIBS) -o $@
 
 clean:
-	-rm -f *.o
+	$(shell find  -type f -name '*.o' -delete)
 	-rm -f $(TARGET)

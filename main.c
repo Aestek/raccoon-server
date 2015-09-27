@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "src/http_server.h"
-#include "src/http_request.h"
+#include "src/server.h"
 #include "src/http_handlers/http_file_handler.h"
 #include "src/logger/logger.h"
 
