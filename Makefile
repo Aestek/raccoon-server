@@ -1,4 +1,4 @@
-qTARGET = server
+TARGET = server
 LIBS = -lm
 CC = gcc
 CFLAGS = -g -Wall -D_BSD_SOURCE -std=c99

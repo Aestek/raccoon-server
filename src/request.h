@@ -16,6 +16,8 @@ typedef struct
 	int client_sockfd;
 } http_request;
 
-void http_request_parse_uri(request_uri *uri, char path[]);
+http_request* http_request_new();
 
-http_request *http_request_parse(int client_sockfd);
+void http_request_parse_uri(http_request *req, char path[]);
+
+int http_request_parse(http_request *req, int client_sockfd);

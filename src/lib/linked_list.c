@@ -34,7 +34,7 @@ void list_prepend(list *list, void *element)
 	list->head = node;
 
 	// first node?
-	if(!list->tail) {
+	if (!list->tail) {
 		list->tail = list->head;
 	}
 
@@ -55,18 +55,6 @@ void list_append(list *list, void *element)
 	}
 
 	list->logicalLength++;
-}
-
-void list_for_each(list *list, listIterator iterator)
-{
-	assert(iterator != NULL);
-
-	listNode *node = list->head;
-	bool result = TRUE;
-	while(node != NULL && result) {
-		result = iterator(node->data);
-		node = node->next;
-	}
 }
 
 void *list_head(list *list, bool removeFromList)
@@ -95,4 +83,22 @@ void *list_tail(list *list)
 int list_size(list *list)
 {
 	return list->logicalLength;
+}
+
+list_iterator *list_get_iterator(list *list)
+{
+	list_iterator *it = malloc(sizeof(list_iterator));
+	*it = list->head;
+	return it;
+}
+
+void *list_iterate(list_iterator *it)
+{
+	listNode *node = *it;
+
+	if (node == NULL)
+		return NULL;
+
+	*it = node->next;
+	return node->data;
 }

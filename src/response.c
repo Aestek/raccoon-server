@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "http_response.h"
+#include <unistd.h>
+#include <string.h>
+#include "response.h"
 
 http_response* http_response_new()
 {
@@ -33,10 +35,10 @@ void http_response_write(http_request *req, http_response *res)
 	sprintf(status_line, "%s %d\r\n", res->http_version_str, res->status_code);
 	write(req->client_sockfd, status_line, strlen(status_line));
 
-	while (list_size(&res->headers)) {
-		http_header *header = (http_header*)list_head(&res->headers, TRUE);
+	list_iterator *it = list_get_iterator(&res->headers);
+	http_header *header;
+	while ((header = list_iterate(it)) != NULL)
 		http_response_write_header(req, header);
-	}
 
 	http_response_write_crlf(req);
 

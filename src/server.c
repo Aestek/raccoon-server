@@ -17,9 +17,24 @@ void error(const char *msg)
 	exit(1);
 }
 
+void handle_connection(int client_sockfd, http_handler handler, logger logger)
+{
+	http_request *req = http_request_new();
+	http_response *res = http_response_new();
+	strcpy(res->http_version_str, "HTTP/1.0");
+
+	if (http_request_parse(req, client_sockfd) != 1) {
+		handler(req, res);
+	} else {
+		res->status_code = 400;
+	}
+
+	http_response_write(req, res);
+	logger(req, res);
+}
+
 void run_server(int portno, http_handler handler, logger logger)
 {
-	const int backlog_size = TCP_BACKLOG_SIZE;
 	int server_sockfd, client_sockfd;
 	socklen_t client_addr_length;
 	struct sockaddr_in serv_addr, cli_addr;
@@ -40,7 +55,7 @@ void run_server(int portno, http_handler handler, logger logger)
 	) < 0)
 		error("ERROR on binding");
 
-	listen(server_sockfd, backlog_size);
+	listen(server_sockfd, TCP_BACKLOG_SIZE);
 
 	client_addr_length = sizeof(cli_addr);
 
@@ -54,13 +69,7 @@ void run_server(int portno, http_handler handler, logger logger)
 		if (client_sockfd < 0)
 			error("ERROR on accept");
 
-		http_request *req = http_request_parse(client_sockfd);
-		http_response *res = http_response_new();
-		strcpy(res->http_version_str, "HTTP/1.0");
-
-		handler(req, res);
-		http_response_write(req, res);
-		logger(req, res);
+		handle_connection(client_sockfd, handler, logger);
 
 		close(client_sockfd);
 	}
