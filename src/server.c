@@ -31,6 +31,8 @@ void handle_connection(int client_sockfd, http_handler handler, logger logger)
 
 	http_response_write(req, res);
 	logger(req, res);
+	free(req);
+	free(res);
 }
 
 void run_server(int portno, http_handler handler, logger logger)

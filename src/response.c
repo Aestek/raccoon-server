@@ -19,14 +19,13 @@ void http_response_write_crlf(http_request *req)
 void http_response_write_header(http_request *req, http_header *header)
 {
 	int field_len = HEADER_NAME_LEN + HEADER_VALUE_LEN + 2;
-	char *field = malloc(field_len * sizeof(char));
+	char field[field_len];
 	strcpy(field, header->name);
 	strcat(field, ": ");
 	strcat(field, header->value);
 	strcat(field, "\r\n");
 
 	write(req->client_sockfd, field, field_len);
-	free(field);
 }
 
 void http_response_write(http_request *req, http_response *res)

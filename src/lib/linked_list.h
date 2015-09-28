@@ -16,7 +16,6 @@ typedef listNode* list_iterator;
 
 typedef struct {
 	int logicalLength;
-	int elementSize;
 	listNode *head;
 	listNode *tail;
 	freeFunction freeFn;
