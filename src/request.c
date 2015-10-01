@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include "request.h"
 
 http_request* http_request_new()
@@ -18,6 +19,7 @@ void http_request_parse_uri(http_request *req, char path[])
 		path_end_index = (int)(question_mark - path);
 
 	strncpy(req->path, path, path_end_index);
+	req->path[path_end_index] = '\0';
 
 	if (question_mark != NULL)
 		strncpy(req->query_string, &path[path_end_index + 1], QUERY_STRING_MAX_LENGTH);
@@ -34,8 +36,17 @@ int http_request_parse(http_request *req, int client_sockfd)
 		HTTP_VERSION_STR_MAX_LENGTH;
 
 	char input_buffer[input_buffer_size];
+	int input_buffer_read = 0;
+	int last_read = 0;
 
-	read(client_sockfd, input_buffer, input_buffer_size);
+	int flags = fcntl(client_sockfd, F_GETFL, 0);
+	fcntl(client_sockfd, F_SETFL, flags | O_NONBLOCK);
+
+	do {
+		last_read = read(client_sockfd, &input_buffer[input_buffer_read], input_buffer_size);
+		input_buffer_read += last_read;
+	} while(last_read > 0 || last_read == -1);
+
 	req->client_sockfd = client_sockfd;
 
 	char payload_delim[] = " ";

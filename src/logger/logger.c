@@ -17,7 +17,7 @@ void log_raw(char msg[])
 	strcat(line, "] ");
 	strcat(line, msg);
 
-	printf("%s\n", line);
+	// printf("%s\n", line);
 }
 
 void log_roundtrip(http_request *req, http_response *res)

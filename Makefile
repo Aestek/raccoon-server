@@ -1,7 +1,7 @@
 TARGET = server
 LIBS = -lm
-CC = gcc
-CFLAGS = -g -Wall -D_BSD_SOURCE -std=c99
+CC = gcc -pthread
+CFLAGS = -g  -Wall -D_BSD_SOURCE -std=c99
 
 .PHONY: default all clean
 
@@ -22,3 +22,6 @@ $(TARGET): $(OBJECTS)
 clean:
 	$(shell find  -type f -name '*.o' -delete)
 	-rm -f $(TARGET)
+
+watch:
+	while true; do make; inotifywait -qre close_write .; done

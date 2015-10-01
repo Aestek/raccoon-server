@@ -7,40 +7,37 @@
 http_response* http_response_new()
 {
 	http_response *res = malloc(sizeof(http_response));
-	list_new(&res->headers, NULL);
+	res->body_data = NULL;
+	list_new(&res->headers, &free);
 	return res;
 }
 
-void http_response_write_crlf(http_request *req)
+void http_response_destroy(http_response *res)
 {
-	write(req->client_sockfd, "\r\n", 2);
-}
-
-void http_response_write_header(http_request *req, http_header *header)
-{
-	int field_len = HEADER_NAME_LEN + HEADER_VALUE_LEN + 2;
-	char field[field_len];
-	strcpy(field, header->name);
-	strcat(field, ": ");
-	strcat(field, header->value);
-	strcat(field, "\r\n");
-
-	write(req->client_sockfd, field, field_len);
+	free(res->body_data);
+	list_destroy(&res->headers);
+	free(res);
 }
 
 void http_response_write(http_request *req, http_response *res)
 {
-	char status_line[256];
-	sprintf(status_line, "%s %d\r\n", res->http_version_str, res->status_code);
-	write(req->client_sockfd, status_line, strlen(status_line));
+	int response_b_len = 1024;
+	char response[response_b_len];
+	sprintf(response, "%s %d Raccoon\r\n", res->http_version_str, res->status_code);
 
 	list_iterator *it = list_get_iterator(&res->headers);
 	http_header *header;
-	while ((header = list_iterate(it)) != NULL)
-		http_response_write_header(req, header);
+	while ((header = list_iterate(it)) != NULL) {
+		strcat(response, header->name);
+		strcat(response, ":");
+		strcat(response, header->value);
+		strcat(response, "\r\n");
+	}
 
-	http_response_write_crlf(req);
+	strcat(response, "\r\n");
 
-	if (res->body_data != NULL)
+	write(req->client_sockfd, response, strlen(response));
+
+	if (res->body_data != NULL && &res->response_body_writer != NULL)
 		res->response_body_writer(req->client_sockfd, res->body_data);
 }

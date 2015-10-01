@@ -4,8 +4,10 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/stat.h>
+#include <unistd.h>
 #include <time.h>
 #include <errno.h>
+#include <fcntl.h>
 #include "http_file_handler.h"
 #include "../request.h"
 #include "../response.h"
@@ -15,18 +17,15 @@
 
 void write_file_to_res(int resdf, void *data)
 {
-	FILE *fp = fopen(data, "r");
+	int fp = open((char *)data, O_RDONLY);
 
-	if (fp == NULL) {
-		perror("Error while opening the file.\n");
-		exit(1);
-	}
+	int buffer_size = 65535;
+	char buffer[buffer_size];
+	int read_len;
+	while ((read_len = read(fp, buffer, buffer_size)) > 0)
+		write(resdf, buffer, read_len);
 
-	char ch;
-	while ((ch = fgetc(fp)) != EOF)
-		write(resdf, &ch, 1);
-
-	fclose(fp);
+	close(fp);
 }
 
 path_status resolve_path_from_root(char root[], char resolved_path[], char req_path[])
@@ -63,7 +62,7 @@ path_status resolve_path_from_root(char root[], char resolved_path[], char req_p
 void http_file_handler(http_request *req, http_response *res)
 {
 	char cwd[REQUEST_PATH_MAX_LENGTH];
-	char path[REQUEST_PATH_MAX_LENGTH];
+	char *path = malloc(REQUEST_PATH_MAX_LENGTH * sizeof(char));
 
 	if (getcwd(cwd, sizeof(cwd)) == NULL) {
 		res->status_code = 500;
@@ -74,6 +73,7 @@ void http_file_handler(http_request *req, http_response *res)
 
 	switch (status) {
 		case PATH_ENOTFOUND:
+			printf("ERROR\n", req->path);
 			res->status_code = 404;
 			return;
 
@@ -90,7 +90,8 @@ void http_file_handler(http_request *req, http_response *res)
 			res->status_code = 200;
 	}
 
-	res->body_data = &path;
+
+	res->body_data = path;
 	res->response_body_writer = &write_file_to_res;
 
 	struct stat st;

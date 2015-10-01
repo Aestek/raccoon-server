@@ -6,10 +6,21 @@
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <semaphore.h>
+#include <pthread.h>
+#include <signal.h>
 #include "server.h"
 #include "header.h"
 #include "request.h"
 #include "lib/linked_list.h"
+#include "lib/array_queue.h"
+
+sem_t queue_len_mutex;
+sem_t queue_free_mutex;
+pthread_mutex_t queue_pop_mutex;
+array_queue queue;
+http_handler handler;
+logger log_handler;
 
 void error(const char *msg)
 {
@@ -17,11 +28,16 @@ void error(const char *msg)
 	exit(1);
 }
 
-void handle_connection(int client_sockfd, http_handler handler, logger logger)
+void signal_callback_handler(int signum)
+{
+	printf("Caught signal SIGPIPE %d\n",signum);
+}
+
+static void handle_connection(int client_sockfd)
 {
 	http_request *req = http_request_new();
 	http_response *res = http_response_new();
-	strcpy(res->http_version_str, "HTTP/1.0");
+	strcpy(res->http_version_str, "HTTP/1.1");
 
 	if (http_request_parse(req, client_sockfd) != 1) {
 		handler(req, res);
@@ -30,14 +46,40 @@ void handle_connection(int client_sockfd, http_handler handler, logger logger)
 	}
 
 	http_response_write(req, res);
-	logger(req, res);
+	log_handler(req, res);
 	free(req);
-	free(res);
+	http_response_destroy(res);
 }
 
-void run_server(int portno, http_handler handler, logger logger)
+static void tr_handler(void *ptr)
 {
-	int server_sockfd, client_sockfd;
+	int *sock_fd;
+	for (;;) {
+		sem_wait(&queue_len_mutex);
+		pthread_mutex_lock(&queue_pop_mutex);
+		sock_fd = array_queue_pop(&queue);
+		pthread_mutex_unlock(&queue_pop_mutex);
+		sem_post(&queue_free_mutex);
+
+		handle_connection(*sock_fd);
+		close(*sock_fd);
+		free(sock_fd);
+	}
+}
+
+static void tr_run(int count)
+{
+	pthread_t threads[count];
+	for (int i = 0; i < count; i++) {
+		int *tr_n = malloc(sizeof(int));
+		*tr_n = i;
+		pthread_create(&threads[i], NULL, (void *)&tr_handler, tr_n);
+	}
+}
+
+void run_server(int portno, http_handler _handler, logger _log_handler)
+{
+	int server_sockfd;
 	socklen_t client_addr_length;
 	struct sockaddr_in serv_addr, cli_addr;
 
@@ -57,23 +99,36 @@ void run_server(int portno, http_handler handler, logger logger)
 	) < 0)
 		error("ERROR on binding");
 
+	int queue_size = 1024;
+	sem_init(&queue_free_mutex, 0, queue_size);
+	sem_init(&queue_len_mutex, 0, 0);
+	pthread_mutex_init(&queue_pop_mutex, NULL);
+	array_queue_init(&queue, 2048);
+	handler = _handler;
+	log_handler = _log_handler;
+
+	tr_run(4);
+	signal(SIGPIPE, &signal_callback_handler);
+
 	listen(server_sockfd, TCP_BACKLOG_SIZE);
 
 	client_addr_length = sizeof(cli_addr);
 
 	for (;;) {
-		client_sockfd = accept(
+		sem_wait(&queue_free_mutex);
+
+		int *client_sockfd = malloc(sizeof(int));
+		*client_sockfd = accept(
 			server_sockfd,
 			(struct sockaddr *) &cli_addr,
 			&client_addr_length
 		);
 
-		if (client_sockfd < 0)
+		if (*client_sockfd < 0)
 			error("ERROR on accept");
 
-		handle_connection(client_sockfd, handler, logger);
-
-		close(client_sockfd);
+		array_queue_push(&queue, client_sockfd);
+		sem_post(&queue_len_mutex);
 	}
 
 	close(server_sockfd);

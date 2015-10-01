@@ -17,9 +17,6 @@ typedef struct
 } http_response;
 
 http_response* http_response_new();
-
-void http_response_write_crlf(http_request *req);
-
-void http_response_write_header(http_request *req, http_header *header);
+void http_response_destroy(http_response *res);
 
 void http_response_write(http_request *req, http_response *res);
