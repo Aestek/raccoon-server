@@ -9,18 +9,17 @@
 #include <semaphore.h>
 #include <pthread.h>
 #include <signal.h>
+#include <fcntl.h>
 #include "server.h"
 #include "header.h"
 #include "request.h"
 #include "lib/linked_list.h"
 #include "lib/array_queue.h"
+#include "call.h"
 
-sem_t queue_len_mutex;
-sem_t queue_free_mutex;
-pthread_mutex_t queue_pop_mutex;
-array_queue queue;
 http_handler handler;
 logger log_handler;
+int server_sockfd;
 
 void error(const char *msg)
 {
@@ -33,38 +32,75 @@ void signal_callback_handler(int signum)
 	printf("Caught signal SIGPIPE %d\n",signum);
 }
 
-static void handle_connection(int client_sockfd)
+static int clean_up(array_queue *equeue, int err, void *arg, call *next)
 {
-	http_request *req = http_request_new();
-	http_response *res = http_response_new();
-	strcpy(res->http_version_str, "HTTP/1.1");
+	http_response *res = (http_response*)arg;
+	close(res->client_sockfd);
+	http_response_destroy((http_response*)arg);
+	return 0;
+}
 
-	if (http_request_parse(req, client_sockfd) != 1) {
+static int process_connection(array_queue *equeue, int err, void *arg, call *next)
+{
+	http_response *res = http_response_new();
+	http_request *req = (http_request*)arg;
+	strcpy(res->http_version_str, "HTTP/1.1");
+	res->client_sockfd = req->client_sockfd;
+
+	if (err == 0) {
 		handler(req, res);
+	} else if (err == -3) {
+		array_queue_push(equeue, call_new(&clean_up, res, NULL));
+		printf("Bad req\n");
+		return 1;
 	} else {
 		res->status_code = 400;
 	}
 
-	http_response_write(req, res);
-	log_handler(req, res);
+	if (res->status_code != 200)
+		log_handler(req, res);
 	free(req);
-	http_response_destroy(res);
+
+	next->arg = res;
+
+	return 0;
+}
+
+static int handle_connection(array_queue *equeue, int err, void *arg, call *next)
+{
+	struct sockaddr_in cli_addr;
+	socklen_t client_addr_length = sizeof(cli_addr);
+
+	int sock_fd = accept(
+		server_sockfd,
+		(struct sockaddr *) &cli_addr,
+		&client_addr_length
+	);
+
+	if (sock_fd >= 0) {
+		int flags = fcntl(sock_fd, F_GETFL, 0);
+		fcntl(sock_fd, F_SETFL, flags | O_NONBLOCK);
+
+		http_request *req = http_request_new();
+		req->client_sockfd = sock_fd;
+
+		array_queue_push(equeue,
+			call_new(&http_request_parse, req,
+				call_new(&process_connection, NULL,
+					call_new(&http_response_write, NULL,
+						call_new(&clean_up, NULL, NULL)))));
+	}
+
+	array_queue_push(equeue, call_new(&handle_connection, NULL, NULL));
+
+	return 0;
 }
 
 static void tr_handler(void *ptr)
 {
-	int *sock_fd;
-	for (;;) {
-		sem_wait(&queue_len_mutex);
-		pthread_mutex_lock(&queue_pop_mutex);
-		sock_fd = array_queue_pop(&queue);
-		pthread_mutex_unlock(&queue_pop_mutex);
-		sem_post(&queue_free_mutex);
-
-		handle_connection(*sock_fd);
-		close(*sock_fd);
-		free(sock_fd);
-	}
+	array_queue *equeue = array_queue_new(1024);
+	array_queue_push(equeue, call_new(&handle_connection, NULL, NULL));
+	call_exec(equeue);
 }
 
 static void tr_run(int count)
@@ -79,9 +115,7 @@ static void tr_run(int count)
 
 void run_server(int portno, http_handler _handler, logger _log_handler)
 {
-	int server_sockfd;
-	socklen_t client_addr_length;
-	struct sockaddr_in serv_addr, cli_addr;
+	struct sockaddr_in serv_addr;
 
 	server_sockfd = socket(AF_INET, SOCK_STREAM, 0);
 	if (server_sockfd < 0)
@@ -99,38 +133,16 @@ void run_server(int portno, http_handler _handler, logger _log_handler)
 	) < 0)
 		error("ERROR on binding");
 
-	int queue_size = 1024;
-	sem_init(&queue_free_mutex, 0, queue_size);
-	sem_init(&queue_len_mutex, 0, 0);
-	pthread_mutex_init(&queue_pop_mutex, NULL);
-	array_queue_init(&queue, 2048);
 	handler = _handler;
 	log_handler = _log_handler;
 
-	tr_run(4);
 	signal(SIGPIPE, &signal_callback_handler);
+	listen(server_sockfd, 1024);
 
-	listen(server_sockfd, TCP_BACKLOG_SIZE);
+	int flags = fcntl(server_sockfd, F_GETFL, 0);
+	fcntl(server_sockfd, F_SETFL, flags | O_NONBLOCK);
 
-	client_addr_length = sizeof(cli_addr);
-
-	for (;;) {
-		sem_wait(&queue_free_mutex);
-
-		int *client_sockfd = malloc(sizeof(int));
-		*client_sockfd = accept(
-			server_sockfd,
-			(struct sockaddr *) &cli_addr,
-			&client_addr_length
-		);
-
-		if (*client_sockfd < 0)
-			error("ERROR on accept");
-
-		array_queue_push(&queue, client_sockfd);
-		sem_post(&queue_len_mutex);
-	}
-
-	close(server_sockfd);
+	tr_run(3);
+	for(;;) sleep(2);
 }
 

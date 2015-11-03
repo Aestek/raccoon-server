@@ -5,6 +5,7 @@ typedef struct {
 	int tail;
 	int size;
 	void **elements;
+	int length;
 } array_queue;
 
 void array_queue_init(array_queue *q, int size);

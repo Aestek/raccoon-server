@@ -3,11 +3,16 @@
 #include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <errno.h>
 #include "request.h"
+#include "lib/array_queue.h"
+#include "call.h"
 
 http_request* http_request_new()
 {
-	return malloc(sizeof(http_request));
+	http_request *req = malloc(sizeof(http_request));
+	req->input_buffer_read = 0;
+	return req;
 }
 
 void http_request_parse_uri(http_request *req, char path[])
@@ -27,32 +32,34 @@ void http_request_parse_uri(http_request *req, char path[])
 		req->query_string[0] = '\0';
 }
 
-int http_request_parse(http_request *req, int client_sockfd)
+int http_request_parse(array_queue *equeue, int err, void *arg, call *next)
 {
-	const int input_buffer_size =
-		HTTP_METHOD_MAX_LENGTH +
-		REQUEST_PATH_MAX_LENGTH +
-		QUERY_STRING_MAX_LENGTH +
-		HTTP_VERSION_STR_MAX_LENGTH;
+	http_request *req = (http_request*)arg;
+	next->arg = req;
 
-	char input_buffer[input_buffer_size];
-	int input_buffer_read = 0;
-	int last_read = 0;
+	if (req->input_buffer_read) {
+		memset(&req->input_buffer, 0, 40000);
+	}
 
-	int flags = fcntl(client_sockfd, F_GETFL, 0);
-	fcntl(client_sockfd, F_SETFL, flags | O_NONBLOCK);
+	int last_read = read(req->client_sockfd, &req->input_buffer[req->input_buffer_read], 40000);
 
-	do {
-		last_read = read(client_sockfd, &input_buffer[input_buffer_read], input_buffer_size);
-		input_buffer_read += last_read;
-	} while(last_read > 0 || last_read == -1);
+	if (last_read > 0)
+		req->input_buffer_read += last_read;
 
-	req->client_sockfd = client_sockfd;
+	if ((last_read == -1 && errno == EAGAIN) || (last_read > 0 && strchr(req->input_buffer, '\r') == NULL)) {
+		array_queue_push(equeue, call_new(&http_request_parse, req, next));
+		return 1;
+	} else if (last_read == -1) {
+		perror("Parse");
+		if (errno == EBADF)
+			return -3;
+		return -2;
+	}
 
 	char payload_delim[] = " ";
 	char *playload_parts;
 
-	char *method = strtok_r(input_buffer, payload_delim, &playload_parts);
+	char *method = strtok_r(req->input_buffer, payload_delim, &playload_parts);
 
 	if (method == NULL)
 		return -1;

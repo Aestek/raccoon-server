@@ -73,7 +73,6 @@ void http_file_handler(http_request *req, http_response *res)
 
 	switch (status) {
 		case PATH_ENOTFOUND:
-			printf("ERROR\n", req->path);
 			res->status_code = 404;
 			return;
 
